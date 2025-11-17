@@ -1,0 +1,65 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dotnet publish release",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "publish",
+        "${workspaceFolder}",
+        "--configuration",
+        "Release",
+        "--output",
+        "${workspaceFolder}/publish"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
+      "label": "deploy ftp",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/deploy-somee.ps1",
+        "-publishDir",
+        "publish",
+        "-Env",
+        "${input:deployEnv}",
+        "-Password",
+        "${input:deployPassword}"
+      ],
+      "dependsOn": [
+        "dotnet publish release"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy dinámico (FTP)",
+      "dependsOn": [
+        "deploy ftp"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "deployEnv",
+      "type": "pickString",
+      "description": "Selecciona el entorno de deployment",
+      "options": [
+        "somee"
+      ],
+      "default": "somee"
+    },
+    {
+      "id": "deployPassword",
+      "type": "promptString",
+      "description": "Contraseña FTP",
+      "password": true
+    }
+  ]
+}

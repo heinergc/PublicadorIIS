@@ -1,0 +1,9 @@
+{
+  "environments": {
+    "somee": {
+      "ftpHost": "ftp.somee.com",
+      "ftpUser": "MI_USUARIO_FTP",
+      "remoteRoot": "/site/wwwroot"
+    }
+  }
+}
