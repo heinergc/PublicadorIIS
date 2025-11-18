@@ -1,8 +1,9 @@
 {
   "environments": {
     "somee": {
+      "publishDir": "",
       "ftpHost": "ftp.somee.com",
-      "ftpUser": "MI_USUARIO_FTP",
+      "ftpUser": "lksa2014",
       "remoteRoot": "/site/wwwroot"
     }
   }

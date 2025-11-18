@@ -38,7 +38,13 @@ Write-Host "📂 Ruta remota: $remoteRoot" -ForegroundColor Gray
 Write-Host ""
 
 # Verificar directorio de publicación
-$fullPublishPath = Join-Path $PSScriptRoot $publishDir
+# Si es ruta absoluta, usarla directamente; si no, relativa al script
+if ([System.IO.Path]::IsPathRooted($publishDir)) {
+    $fullPublishPath = $publishDir
+} else {
+    $fullPublishPath = Join-Path $PSScriptRoot $publishDir
+}
+
 if (-not (Test-Path $fullPublishPath)) {
     Write-Error "❌ No existe el directorio de publicación: $fullPublishPath"
     exit 1

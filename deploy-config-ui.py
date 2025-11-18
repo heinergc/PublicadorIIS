@@ -8,7 +8,7 @@ import customtkinter as ctk
 import json
 import os
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import subprocess
 import sys
 
@@ -136,6 +136,38 @@ class DeployConfigUI(ctk.CTk):
         
         row = 2
         
+        # Directorio de Publicación
+        ctk.CTkLabel(
+            self.scroll_frame,
+            text="📁 Directorio de Publicación:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w"
+        ).grid(row=row, column=0, sticky="w", padx=20, pady=(10, 5))
+        
+        publish_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
+        publish_frame.grid(row=row+1, column=0, columnspan=2, sticky="ew", padx=20, pady=(0, 15))
+        publish_frame.grid_columnconfigure(0, weight=1)
+        
+        self.publish_dir_entry = ctk.CTkEntry(
+            publish_frame,
+            placeholder_text="D:\\MiProyecto\\bin\\Release\\net8.0\\publish",
+            height=40
+        )
+        self.publish_dir_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        self.publish_dir_entry.insert(0, env_config.get("publishDir", ""))
+        
+        browse_btn = ctk.CTkButton(
+            publish_frame,
+            text="📂 Examinar",
+            command=self.browse_publish_dir,
+            width=120,
+            height=40,
+            fg_color=("#3b8ed0", "#1f6aa5")
+        )
+        browse_btn.grid(row=0, column=1)
+        
+        row += 2
+        
         # FTP Host
         ctk.CTkLabel(
             self.scroll_frame,
@@ -196,6 +228,7 @@ class DeployConfigUI(ctk.CTk):
         
         info_text = """
 💡 Consejos:
+• Especifica la ruta completa del directorio con los archivos compilados
 • La contraseña NO se guarda aquí por seguridad
 • Se pedirá al ejecutar el deployment desde VS Code
 • Puedes agregar múltiples entornos (test, prod, etc.)
@@ -218,6 +251,19 @@ class DeployConfigUI(ctk.CTk):
         # Recrear campos con nueva configuración
         self.create_config_fields()
     
+    def browse_publish_dir(self):
+        """Abre el diálogo para seleccionar directorio de publicación"""
+        initial_dir = self.publish_dir_entry.get() or str(Path.home())
+        
+        directory = filedialog.askdirectory(
+            title="Seleccionar directorio de publicación",
+            initialdir=initial_dir
+        )
+        
+        if directory:
+            self.publish_dir_entry.delete(0, "end")
+            self.publish_dir_entry.insert(0, directory)
+    
     def add_new_environment(self):
         """Agrega un nuevo entorno"""
         dialog = ctk.CTkInputDialog(
@@ -236,6 +282,7 @@ class DeployConfigUI(ctk.CTk):
                 self.config_data["environments"] = {}
             
             self.config_data["environments"][env_name] = {
+                "publishDir": "",
                 "ftpHost": "ftp.example.com",
                 "ftpUser": "usuario",
                 "remoteRoot": "/site/wwwroot"
@@ -319,6 +366,7 @@ class DeployConfigUI(ctk.CTk):
         
         # Actualizar datos
         self.config_data["environments"][current_env] = {
+            "publishDir": self.publish_dir_entry.get().strip(),
             "ftpHost": self.ftp_host_entry.get().strip(),
             "ftpUser": self.ftp_user_entry.get().strip(),
             "remoteRoot": self.remote_root_entry.get().strip()
@@ -326,12 +374,23 @@ class DeployConfigUI(ctk.CTk):
         
         # Validar campos
         if not all([
+            self.config_data["environments"][current_env]["publishDir"],
             self.config_data["environments"][current_env]["ftpHost"],
             self.config_data["environments"][current_env]["ftpUser"],
             self.config_data["environments"][current_env]["remoteRoot"]
         ]):
             messagebox.showerror("Error", "Todos los campos son obligatorios")
             return
+        
+        # Validar que el directorio existe
+        publish_dir = self.config_data["environments"][current_env]["publishDir"]
+        if not os.path.exists(publish_dir):
+            result = messagebox.askyesno(
+                "Advertencia",
+                f"El directorio no existe:\n{publish_dir}\n\n¿Guardar de todas formas?"
+            )
+            if not result:
+                return
         
         try:
             self.save_config()
@@ -377,11 +436,13 @@ class DeployConfigUI(ctk.CTk):
             
             try:
                 script_path = Path(__file__).parent / "deploy-somee.ps1"
+                publish_dir = self.config_data["environments"][current_env]["publishDir"]
+                
                 subprocess.Popen([
                     "powershell",
                     "-ExecutionPolicy", "Bypass",
                     "-File", str(script_path),
-                    "-publishDir", "publish",
+                    "-publishDir", publish_dir,
                     "-Env", current_env,
                     "-Password", password
                 ], shell=True)
