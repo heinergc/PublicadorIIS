@@ -1,10 +1,10 @@
 {
   "environments": {
     "somee": {
-      "publishDir": "",
-      "ftpHost": "ftp.somee.com",
+      "publishDir": "D:\\Fuentes_gitHub\\RubricasApp.Web\\bin\\release\\publish",
+      "ftpHost": "155.254.244.30/www.RubricasApp.somee.com",
       "ftpUser": "lksa2014",
-      "remoteRoot": "/site/wwwroot"
+      "remoteRoot": "/"
     }
   }
 }

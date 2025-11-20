@@ -11,10 +11,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Leer configuración
+# Leer configuracion
 $configFile = Join-Path $PSScriptRoot "deploy-settings.json"
 if (-not (Test-Path $configFile)) {
-    Write-Error "❌ No se encontró el archivo deploy-settings.json"
+    Write-Error "No se encontro el archivo deploy-settings.json"
     exit 1
 }
 
@@ -22,7 +22,7 @@ $config = Get-Content $configFile | ConvertFrom-Json
 $envConfig = $config.environments.$Env
 
 if (-not $envConfig) {
-    Write-Error "❌ Entorno '$Env' no encontrado en deploy-settings.json"
+    Write-Error "Entorno '$Env' no encontrado en deploy-settings.json"
     exit 1
 }
 
@@ -30,15 +30,42 @@ $ftpHost = $envConfig.ftpHost
 $ftpUser = $envConfig.ftpUser
 $remoteRoot = $envConfig.remoteRoot
 
-Write-Host "🚀 Iniciando deployment a $Env..." -ForegroundColor Cyan
-Write-Host "📁 Directorio: $publishDir" -ForegroundColor Gray
-Write-Host "🌐 Host FTP: $ftpHost" -ForegroundColor Gray
-Write-Host "👤 Usuario: $ftpUser" -ForegroundColor Gray
-Write-Host "📂 Ruta remota: $remoteRoot" -ForegroundColor Gray
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  Iniciando deployment a $Env" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Directorio: $publishDir" -ForegroundColor Gray
+Write-Host "Host FTP: $ftpHost" -ForegroundColor Gray
+Write-Host "Usuario: $ftpUser" -ForegroundColor Gray
+Write-Host "Ruta remota: $remoteRoot" -ForegroundColor Gray
 Write-Host ""
 
-# Verificar directorio de publicación
-# Si es ruta absoluta, usarla directamente; si no, relativa al script
+# Verificar credenciales FTP
+Write-Host "Verificando conexion FTP..." -ForegroundColor Yellow
+try {
+    $testUri = "ftp://$ftpHost/"
+    $testRequest = [System.Net.FtpWebRequest]::Create($testUri)
+    $testRequest.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectory
+    $testRequest.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $Password)
+    $testRequest.UseBinary = $true
+    $testRequest.KeepAlive = $false
+    $testRequest.Timeout = 30000
+    
+    $testResponse = $testRequest.GetResponse()
+    $testResponse.Close()
+    Write-Host "Conexion FTP exitosa!" -ForegroundColor Green
+    Write-Host ""
+} catch {
+    Write-Error "Error al conectar con FTP: $($_.Exception.Message)"
+    Write-Host ""
+    Write-Host "Posibles causas:" -ForegroundColor Yellow
+    Write-Host "  1. Usuario o contrasena incorrectos" -ForegroundColor Gray
+    Write-Host "  2. Host FTP incorrecto" -ForegroundColor Gray
+    Write-Host "  3. El servidor FTP no esta disponible" -ForegroundColor Gray
+    Write-Host "  4. Firewall bloqueando la conexion" -ForegroundColor Gray
+    exit 1
+}
+
+# Verificar directorio de publicacion
 if ([System.IO.Path]::IsPathRooted($publishDir)) {
     $fullPublishPath = $publishDir
 } else {
@@ -46,11 +73,14 @@ if ([System.IO.Path]::IsPathRooted($publishDir)) {
 }
 
 if (-not (Test-Path $fullPublishPath)) {
-    Write-Error "❌ No existe el directorio de publicación: $fullPublishPath"
+    Write-Error "No existe el directorio de publicacion: $fullPublishPath"
     exit 1
 }
 
-# Función para crear directorio remoto
+Write-Host "Ruta completa: $fullPublishPath" -ForegroundColor Gray
+Write-Host ""
+
+# Funcion para crear directorio remoto
 function Ensure-RemoteDirectory {
     param(
         [string]$ftpUri,
@@ -65,18 +95,18 @@ function Ensure-RemoteDirectory {
         $request.Credentials = New-Object System.Net.NetworkCredential($username, $password)
         $request.UseBinary = $true
         $request.KeepAlive = $false
+        $request.Timeout = 30000
         
         $response = $request.GetResponse()
         $response.Close()
         return $true
     }
     catch {
-        # El directorio puede ya existir
         return $false
     }
 }
 
-# Función para subir archivo
+# Funcion para subir archivo
 function Upload-File {
     param(
         [string]$localFile,
@@ -93,6 +123,7 @@ function Upload-File {
         $request.Credentials = New-Object System.Net.NetworkCredential($username, $password)
         $request.UseBinary = $true
         $request.KeepAlive = $false
+        $request.Timeout = 60000
         
         $fileContent = [System.IO.File]::ReadAllBytes($localFile)
         $request.ContentLength = $fileContent.Length
@@ -107,12 +138,16 @@ function Upload-File {
         return $true
     }
     catch {
-        Write-Host "❌ Error subiendo $remotePath : $_" -ForegroundColor Red
+        $errorMsg = $_.Exception.Message
+        if ($_.Exception.InnerException) {
+            $errorMsg += " | " + $_.Exception.InnerException.Message
+        }
+        Write-Host "    ERROR: $errorMsg" -ForegroundColor Red
         return $false
     }
 }
 
-# Función para subir directorio recursivamente
+# Funcion para subir directorio recursivamente
 function Upload-Directory {
     param(
         [string]$localDir,
@@ -123,27 +158,28 @@ function Upload-Directory {
         [string]$baseLocalDir
     )
     
-    # Crear directorio remoto
     if ($remoteDir -ne "/") {
         Ensure-RemoteDirectory -ftpUri $ftpUri -username $username -password $password -remotePath $remoteDir | Out-Null
     }
     
-    # Subir archivos
     $files = Get-ChildItem -Path $localDir -File
+    $fileCount = 0
+    
     foreach ($file in $files) {
+        $fileCount++
         $relativePath = $file.FullName.Substring($baseLocalDir.Length).Replace("\", "/")
         $remotePath = $remoteDir + "/" + $file.Name
         
-        Write-Host "📤 Subiendo: $relativePath" -ForegroundColor Yellow
+        $fileSizeMB = [math]::Round($file.Length / 1MB, 2)
+        Write-Host "[$fileCount] Subiendo: $relativePath ($fileSizeMB MB)" -ForegroundColor Yellow
         
         $success = Upload-File -localFile $file.FullName -ftpUri $ftpUri -username $username -password $password -remotePath $remotePath
         
         if ($success) {
-            Write-Host "   ✅ OK" -ForegroundColor Green
+            Write-Host "    OK" -ForegroundColor Green
         }
     }
     
-    # Procesar subdirectorios
     $dirs = Get-ChildItem -Path $localDir -Directory
     foreach ($dir in $dirs) {
         $newRemoteDir = $remoteDir + "/" + $dir.Name
@@ -154,10 +190,22 @@ function Upload-Directory {
 # Iniciar subida
 $ftpUri = "ftp://$ftpHost"
 
-Write-Host "🔄 Subiendo archivos..." -ForegroundColor Cyan
+Write-Host "Subiendo archivos..." -ForegroundColor Cyan
 Write-Host ""
+
+Write-Host "Creando carpeta logs en el servidor..." -ForegroundColor Yellow
+Ensure-RemoteDirectory -ftpUri $ftpUri -username $ftpUser -password $Password -remotePath ($remoteRoot + "/logs") | Out-Null
 
 Upload-Directory -localDir $fullPublishPath -ftpUri $ftpUri -username $ftpUser -password $Password -remoteDir $remoteRoot -baseLocalDir $fullPublishPath
 
 Write-Host ""
-Write-Host "✅ Deployment completado exitosamente!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "  Deployment completado!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "Archivos subidos exitosamente" -ForegroundColor Gray
+Write-Host ""
+Write-Host "IMPORTANTE:" -ForegroundColor Yellow
+Write-Host "  - Carpeta 'logs' creada en el servidor" -ForegroundColor Gray
+Write-Host "  - Revisar logs en el servidor si hay errores" -ForegroundColor Gray
+Write-Host "  - Asegurarse que .NET Runtime este instalado" -ForegroundColor Gray
+Write-Host ""
